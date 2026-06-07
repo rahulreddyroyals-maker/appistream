@@ -135,6 +135,7 @@ export default function OnlineMusic() {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [totalResults, setTotalResults] = useState(0)
+  const [debugLog, setDebugLog] = useState([])
   const abortRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -151,8 +152,12 @@ export default function OnlineMusic() {
       const res = await fetch(url, { signal: abortRef.current.signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
+      if (json._log) setDebugLog(json._log)
 
-      if (!json.success) throw new Error(json.error || 'API error')
+      if (!json.success) {
+        setDebugLog(json._log || [])
+        throw new Error(json.error || 'API error')
+      }
 
       const raw = json.data?.results || []
       const songs = raw.map(normaliseTrack).filter(t => t.url && t.displayName !== 'Unknown')
@@ -274,13 +279,28 @@ export default function OnlineMusic() {
           <div style={{ margin:'16px', padding:'16px', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:12, textAlign:'center' }}>
             <div style={{ fontSize:28, marginBottom:8 }}>⚠️</div>
             <div style={{ fontSize:13, color:'#fca5a5', marginBottom:12, lineHeight:1.6 }}>{error}</div>
-            <div style={{ fontSize:11, color:'var(--dimmed)', marginBottom:14, lineHeight:1.6 }}>
-              Note: First deploy to Netlify is required for online music to work.<br/>The proxy function runs on your Netlify server.
+            <div style={{ fontSize:11, color:'var(--dimmed)', marginBottom:14, lineHeight:1.6, padding:'8px', background:'rgba(0,0,0,0.2)', borderRadius:8 }}>
+              The music API may be temporarily down.<br/>
+              Check: <span style={{color:'var(--sky)'}}>Netlify → Functions tab</span> to see error logs.
             </div>
-            <button onClick={()=>search(query)}
-              style={{ background:'var(--blue-dim)', border:'1px solid var(--blue)', color:'var(--sky)', borderRadius:8, padding:'8px 20px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-              🔄 Retry
-            </button>
+            <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
+              <button onClick={()=>search(query)}
+                style={{ background:'var(--blue-dim)', border:'1px solid var(--blue)', color:'var(--sky)', borderRadius:8, padding:'8px 20px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                🔄 Retry
+              </button>
+              <button onClick={()=>{ setQuery('Anirudh Ravichander telugu'); search('Anirudh Ravichander telugu') }}
+                style={{ background:'transparent', border:'1px solid var(--navy-border)', color:'var(--muted)', borderRadius:8, padding:'8px 16px', fontSize:12, cursor:'pointer' }}>
+                Try Different Search
+              </button>
+            </div>
+            {debugLog.length > 0 && (
+              <details style={{ marginTop:12, textAlign:'left' }}>
+                <summary style={{ fontSize:10, color:'var(--dimmed)', cursor:'pointer', letterSpacing:0.5 }}>▶ Debug Log ({debugLog.length} entries)</summary>
+                <div style={{ marginTop:6, maxHeight:120, overflowY:'auto', background:'rgba(0,0,0,0.3)', borderRadius:6, padding:8 }}>
+                  {debugLog.map((l,i) => <div key={i} style={{ fontSize:9, color:'#94a3b8', fontFamily:'monospace', marginBottom:2, wordBreak:'break-all' }}>{l}</div>)}
+                </div>
+              </details>
+            )}
           </div>
         )}
 
