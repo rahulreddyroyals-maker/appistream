@@ -291,7 +291,15 @@ export function PlayerProvider({ children }) {
     onPlay()  { dispatch({type:'SET',payload:{audioPlaying:true}}) },
     onPause() { dispatch({type:'SET',payload:{audioPlaying:false}}) },
     onEnded() { controls.next('audio') },
-    onError() { notify('Cannot play — skipping','error'); setTimeout(()=>controls.next('audio'),800) },
+    onError(e) {
+      const { audioQueue, audioIndex } = ref.current
+      const track = audioIndex != null ? audioQueue[audioIndex] : null
+      // Online tracks sometimes take longer to buffer - give more time
+      const delay = track?.online ? 3000 : 1500
+      console.error('[Audio error]', e?.target?.error?.message || 'unknown', 'track:', track?.displayName)
+      notify('Cannot play — skipping','error')
+      setTimeout(()=>controls.next('audio'), delay)
+    },
   }
   const videoHandlers = {
     onTimeUpdate(e) { dispatch({type:'SET',payload:{videoTime:e.target.currentTime}}) },

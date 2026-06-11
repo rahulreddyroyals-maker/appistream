@@ -4,6 +4,14 @@ import { generateId, formatTime } from '../utils/helpers'
 
 const PROXY = '/.netlify/functions/music-search'
 
+function isPlayableUrl(url) {
+  if (!url) return false
+  if (!url.startsWith('http')) return false
+  // Reject encrypted/non-streamable URLs
+  if (url.includes('encrypted_media')) return false
+  return true
+}
+
 function normaliseTrack(s) {
   const dlUrls = s.downloadUrl || []
   const best = dlUrls.find(u=>u.quality==='320kbps')
@@ -15,11 +23,12 @@ function normaliseTrack(s) {
   const artists = Array.isArray(s.artists?.primary)
     ? s.artists.primary.map(a=>a.name).join(', ')
     : (s.primaryArtists || s.artist || '')
+  const url = s.url || best?.url || ''
   return {
     id: s.id || generateId(),
     name: (s.name||s.displayName||s.title||'Unknown')+'.mp3',
     displayName: s.name || s.displayName || s.title || 'Unknown',
-    url: s.url || best?.url || '',
+    url,
     type: 'audio', ext: 'mp3', size: 0, addedAt: Date.now(),
     duration: parseInt(s.duration||0),
     artist: s.artist || artists || '',
@@ -28,6 +37,7 @@ function normaliseTrack(s) {
     language: s.language || '',
     year: s.year || '',
     online: true,
+    quality: s.quality || best?.quality || '',
   }
 }
 
