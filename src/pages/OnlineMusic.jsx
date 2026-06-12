@@ -1,55 +1,79 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { usePlayer } from '../context/PlayerContext'
 import { generateId, formatTime } from '../utils/helpers'
 
 const PROXY = '/.netlify/functions/music-search'
 
-function isPlayableUrl(url) {
-  if (!url) return false
-  if (!url.startsWith('http')) return false
-  // Reject encrypted/non-streamable URLs
-  if (url.includes('encrypted_media')) return false
-  return true
-}
+// ── YouTube IFrame Player ─────────────────────────────────────────────────────
+function YouTubePlayer({ videoId, onClose, title }) {
+  const ref = useRef(null)
+  const [isFS, setIsFS] = useState(false)
 
-function normaliseTrack(s) {
-  const dlUrls = s.downloadUrl || []
-  const best = dlUrls.find(u=>u.quality==='320kbps')
-    || dlUrls.find(u=>u.quality==='160kbps')
-    || dlUrls.find(u=>u.quality==='96kbps')
-    || dlUrls[0]
-  const imgs = Array.isArray(s.image) ? s.image : []
-  const img = (imgs.find(i=>i.quality==='500x500') || imgs.find(i=>i.quality==='150x150') || imgs[0])?.url || ''
-  const artists = Array.isArray(s.artists?.primary)
-    ? s.artists.primary.map(a=>a.name).join(', ')
-    : (s.primaryArtists || s.artist || '')
-  const url = s.url || best?.url || ''
-  return {
-    id: s.id || generateId(),
-    name: (s.name||s.displayName||s.title||'Unknown')+'.mp3',
-    displayName: s.name || s.displayName || s.title || 'Unknown',
-    url,
-    type: 'audio', ext: 'mp3', size: 0, addedAt: Date.now(),
-    duration: parseInt(s.duration||0),
-    artist: s.artist || artists || '',
-    album: s.album?.name || s.album || '',
-    image: s.image && !Array.isArray(s.image) ? s.image : img,
-    language: s.language || '',
-    year: s.year || '',
-    online: true,
-    quality: s.quality || best?.quality || '',
+  const toggleFS = () => {
+    if (!ref.current) return
+    if (!document.fullscreenElement) {
+      ref.current.requestFullscreen?.() || ref.current.webkitRequestFullscreen?.()
+      setIsFS(true)
+    } else {
+      document.exitFullscreen?.() || document.webkitExitFullscreen?.()
+      setIsFS(false)
+    }
   }
+
+  useEffect(() => {
+    const handler = () => setIsFS(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', handler)
+    return () => document.removeEventListener('fullscreenchange', handler)
+  }, [])
+
+  if (!videoId) return null
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.95)', zIndex:2000, display:'flex', flexDirection:'column' }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', background:'rgba(0,0,0,0.8)', flexShrink:0 }}>
+        <div style={{ fontSize:12, color:'#fff', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, marginRight:8 }}>{title}</div>
+        <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+          <button onClick={toggleFS}
+            style={{ background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', borderRadius:6, padding:'6px 10px', fontSize:13, cursor:'pointer' }}>
+            {isFS ? '⊡' : '⛶'}
+          </button>
+          <button onClick={onClose}
+            style={{ background:'rgba(239,68,68,0.3)', border:'1px solid rgba(239,68,68,0.5)', color:'#fff', borderRadius:6, padding:'6px 12px', fontSize:13, cursor:'pointer' }}>
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* YouTube embed */}
+      <div ref={ref} style={{ flex:1, position:'relative', background:'#000' }}>
+        <iframe
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+          title={title}
+        />
+      </div>
+
+      {/* Landscape hint */}
+      <div style={{ padding:'6px', textAlign:'center', background:'rgba(0,0,0,0.8)', flexShrink:0 }}>
+        <span style={{ fontSize:10, color:'rgba(255,255,255,0.4)' }}>Tap ⛶ for fullscreen · Rotate phone for 16:9</span>
+      </div>
+    </div>
+  )
 }
 
+// ── Skeleton loader ───────────────────────────────────────────────────────────
 function Skeleton() {
   return (
-    <div style={{padding:'0 16px'}}>
-      {Array.from({length:5},(_,i)=>(
-        <div key={i} style={{display:'flex',gap:12,alignItems:'center',padding:'10px 0',borderBottom:'1px solid rgba(42,58,82,0.3)'}}>
-          <div style={{width:52,height:52,borderRadius:10,background:'var(--navy-light)',flexShrink:0,animation:`pulse 1.5s ease-in-out ${i*0.1}s infinite`}}/>
-          <div style={{flex:1}}>
-            <div style={{height:12,borderRadius:4,background:'var(--navy-light)',marginBottom:7,width:`${55+i*8}%`,animation:`pulse 1.5s ease-in-out ${i*0.1}s infinite`}}/>
-            <div style={{height:10,borderRadius:4,background:'var(--navy-light)',width:'40%',animation:`pulse 1.5s ease-in-out ${i*0.15}s infinite`}}/>
+    <div style={{ padding:'0 16px' }}>
+      {Array.from({length:6},(_,i)=>(
+        <div key={i} style={{ display:'flex', gap:12, alignItems:'center', padding:'10px 0', borderBottom:'1px solid rgba(42,58,82,0.3)' }}>
+          <div style={{ width:90, height:52, borderRadius:8, background:'var(--navy-light)', flexShrink:0, animation:`pulse 1.5s ease-in-out ${i*0.1}s infinite` }}/>
+          <div style={{ flex:1 }}>
+            <div style={{ height:12, borderRadius:4, background:'var(--navy-light)', marginBottom:7, width:`${55+i*8}%`, animation:`pulse 1.5s ease-in-out ${i*0.1}s infinite` }}/>
+            <div style={{ height:10, borderRadius:4, background:'var(--navy-light)', width:'40%', animation:`pulse 1.5s ease-in-out ${i*0.15}s infinite` }}/>
           </div>
         </div>
       ))}
@@ -57,287 +81,265 @@ function Skeleton() {
   )
 }
 
-function SongCard({song, onPlay, onAdd, isActive, isPlaying}) {
+// ── Video card ────────────────────────────────────────────────────────────────
+function VideoCard({ video, onPlay, isActive }) {
+  const mins = Math.floor((video.duration||0)/60)
+  const secs = String((video.duration||0)%60).padStart(2,'0')
+  const dur = video.duration > 0 ? `${mins}:${secs}` : ''
+
   return (
-    <div onClick={onPlay} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',cursor:'pointer',background:isActive?'rgba(56,189,248,0.09)':'transparent',borderLeft:isActive?'3px solid var(--sky)':'3px solid transparent',transition:'background 0.15s'}}>
-      <div style={{width:52,height:52,borderRadius:10,flexShrink:0,overflow:'hidden',position:'relative',boxShadow:isActive?'0 0 14px rgba(56,189,248,0.45)':'0 2px 8px rgba(0,0,0,0.4)'}}>
-        {song.image
-          ? <img src={song.image} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}
-              onError={e=>{e.target.style.display='none'; if(e.target.nextSibling) e.target.nextSibling.style.display='flex'}}/>
-          : null}
-        <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#1e3a5f,#0f172a)',display:song.image?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>🎵</div>
-        {isActive&&isPlaying&&(
-          <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <div style={{display:'flex',gap:2.5,alignItems:'flex-end'}}>
-              {[0,1,2,3].map(i=><div key={i} style={{width:3,borderRadius:2,background:'var(--sky)',height:4+i*4,animation:`wave ${0.5+i*0.12}s ease-in-out ${i*0.1}s infinite alternate`}}/>)}
+    <div onClick={onPlay}
+      style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 16px', cursor:'pointer', background:isActive?'rgba(255,0,0,0.08)':'transparent', borderLeft:isActive?'3px solid #ef4444':'3px solid transparent', transition:'background 0.15s' }}>
+      {/* Thumbnail */}
+      <div style={{ width:96, height:56, borderRadius:8, overflow:'hidden', flexShrink:0, position:'relative', boxShadow:isActive?'0 0 12px rgba(239,68,68,0.5)':'0 2px 8px rgba(0,0,0,0.5)' }}>
+        {video.image
+          ? <img src={video.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+          : <div style={{ width:'100%', height:'100%', background:'#1a1a2e', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24 }}>▶</div>
+        }
+        {/* Duration badge */}
+        {dur && (
+          <div style={{ position:'absolute', bottom:3, right:3, background:'rgba(0,0,0,0.85)', color:'#fff', fontSize:9, padding:'1px 4px', borderRadius:3, fontFamily:'monospace' }}>{dur}</div>
+        )}
+        {/* YouTube badge */}
+        <div style={{ position:'absolute', top:3, left:3, background:'#ff0000', color:'#fff', fontSize:8, padding:'1px 5px', borderRadius:3, fontWeight:700, letterSpacing:0.5 }}>YT</div>
+        {/* Play overlay when active */}
+        {isActive && (
+          <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <div style={{ display:'flex', gap:2, alignItems:'flex-end' }}>
+              {[0,1,2].map(i=><div key={i} style={{ width:3, borderRadius:2, background:'#ef4444', height:6+i*4, animation:`wave ${0.5+i*0.15}s ease-in-out ${i*0.1}s infinite alternate` }}/>)}
             </div>
           </div>
         )}
       </div>
-      <div style={{flex:1,overflow:'hidden',minWidth:0}}>
-        <div style={{fontSize:13,fontWeight:isActive?600:400,color:isActive?'var(--sky)':'var(--white)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{song.displayName}</div>
-        {song.artist&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{song.artist}</div>}
-        <div style={{display:'flex',gap:6,marginTop:2}}>
-          {song.language&&<span style={{fontSize:9,color:'var(--dimmed)',background:'var(--navy-border)',borderRadius:3,padding:'1px 5px'}}>{song.language.toUpperCase()}</span>}
-          {song.duration>0&&<span style={{fontSize:9,color:'var(--dimmed)',fontFamily:'monospace'}}>{formatTime(song.duration)}</span>}
-          {song.year&&<span style={{fontSize:9,color:'var(--dimmed)'}}>{song.year}</span>}
+
+      {/* Info */}
+      <div style={{ flex:1, overflow:'hidden', minWidth:0 }}>
+        <div style={{ fontSize:13, fontWeight:isActive?600:400, color:isActive?'#f87171':'var(--white)', overflow:'hidden', textOverflow:'ellipsis', WebkitLineClamp:2, display:'-webkit-box', WebkitBoxOrient:'vertical', lineHeight:1.4 }}>
+          {video.displayName}
         </div>
+        <div style={{ fontSize:11, color:'var(--muted)', marginTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {video.artist}
+        </div>
+        {video.views > 0 && (
+          <div style={{ fontSize:9, color:'var(--dimmed)', marginTop:2 }}>
+            {(video.views/1000000).toFixed(1)}M views {video.year && `· ${video.year}`}
+          </div>
+        )}
       </div>
-      <button onClick={e=>{e.stopPropagation();onAdd()}}
-        style={{width:34,height:34,borderRadius:8,background:'var(--blue-dim)',border:'1px solid var(--blue)',color:'var(--sky)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>＋</button>
     </div>
   )
 }
 
+// ── Quick search chips ────────────────────────────────────────────────────────
 const MOODS = [
-  {label:'💔 Melody',q:'Telugu melody songs 2024'},
-  {label:'🔥 Mass',q:'Telugu mass bgm 2024'},
-  {label:'❤️ Love',q:'Telugu love songs'},
-  {label:'🕺 Dance',q:'Telugu dance party hits'},
+  {label:'💔 Melody',    q:'Telugu melody songs 2024'},
+  {label:'🔥 Mass BGM',  q:'Telugu mass bgm 2025'},
+  {label:'❤️ Love',      q:'Telugu love songs latest'},
+  {label:'🕺 Dance',     q:'Telugu dance hits 2024'},
   {label:'🙏 Devotional',q:'Telugu devotional songs'},
-  {label:'😂 Folk',q:'Telugu folk songs'},
-  {label:'🎬 2024 Hits',q:'Telugu new songs 2024'},
-  {label:'😢 Sad',q:'Telugu sad songs'},
+  {label:'😢 Sad',       q:'Telugu sad songs melody'},
+  {label:'🎬 Pushpa 2',  q:'Pushpa 2 Telugu songs'},
+  {label:'🎭 Kalki',     q:'Kalki 2898 AD Telugu songs'},
+  {label:'🏋️ Workout',   q:'Telugu workout bgm'},
+  {label:'🌙 Nightcore', q:'Telugu songs nightcore'},
 ]
-const ARTISTS = ['Anirudh Telugu','Devi Sri Prasad','SS Thaman','Sid Sriram','Mangli','Mickey J Meyer','Hesham Abdul Wahab','Gopi Sundar','Thaman S','Kaala Bhairava']
+const ARTISTS = [
+  'Devi Sri Prasad Telugu','Anirudh Ravichander Telugu','SS Thaman Telugu',
+  'Sid Sriram Telugu','Mangli songs','Mickey J Meyer',
+  'Hesham Abdul Wahab','Thaman S songs','Kaala Bhairava',
+  'Armaan Malik Telugu',
+]
 
+// ── Main component ────────────────────────────────────────────────────────────
 export default function OnlineMusic() {
-  const {controls, notify, state} = usePlayer()
-  const {audioQueue, audioIndex, audioPlaying} = state
+  const { notify } = usePlayer()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
-  const [searched, setSearched] = useState(false) // true after first search attempt
-  const [statusMsg, setStatusMsg] = useState('') // what actually happened
+  const [searched, setSearched] = useState(false)
   const [error, setError] = useState('')
-  const [debugInfo, setDebugInfo] = useState(null)
+  const [debugLog, setDebugLog] = useState([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
+  const [activeId, setActiveId] = useState(null)
+  const [playerVideo, setPlayerVideo] = useState(null) // { videoId, title }
   const abortRef = useRef(null)
 
   const search = useCallback(async (q, pg=1, append=false) => {
     if (!q.trim()) return
     if (abortRef.current) abortRef.current.abort()
     abortRef.current = new AbortController()
-
-    setLoading(true)
-    setError('')
-    setStatusMsg('')
+    setLoading(true); setError('')
     if (!append) { setResults([]); setSearched(false) }
 
     try {
-      const url = `${PROXY}?query=${encodeURIComponent(q.trim())}&page=${pg}&limit=20`
-      console.log('[OnlineMusic] Fetching:', url)
-
-      const res = await fetch(url, {
-        signal: abortRef.current.signal,
-        headers: { 'Accept': 'application/json' }
-      })
-
-      console.log('[OnlineMusic] Response status:', res.status)
-
+      const url = `${PROXY}?query=${encodeURIComponent(q.trim())}&page=${pg}`
+      const res = await fetch(url, { signal: abortRef.current.signal })
       const text = await res.text()
-      console.log('[OnlineMusic] Raw response (first 300):', text.slice(0,300))
 
       let json
       try { json = JSON.parse(text) }
-      catch(pe) {
-        // Not JSON - function probably returned HTML error page
-        setDebugInfo({ httpStatus: res.status, rawResponse: text.slice(0,500) })
-        throw new Error(`Function returned non-JSON (HTTP ${res.status}): ${text.slice(0,100)}`)
-      }
+      catch(_) { throw new Error(`Server error (HTTP ${res.status}): ${text.slice(0,80)}`) }
 
-      setDebugInfo({ httpStatus: res.status, source: json.source, log: json._log })
+      if (json._log) setDebugLog(json._log)
+      if (!json.success) throw new Error(json.error || `API error (${res.status})`)
 
-      if (!json.success) {
-        throw new Error(json.error || `API failed (${res.status})`)
-      }
-
-      const raw = json.data?.results || []
-      console.log('[OnlineMusic] Raw results count:', raw.length)
-
-      const songs = raw.map(normaliseTrack).filter(t => {
-        const valid = t.url && t.displayName && t.displayName !== 'Unknown'
-        if (!valid) console.log('[OnlineMusic] Filtered out:', t.displayName, 'url:', t.url?.slice(0,50))
-        return valid
-      })
-
-      console.log('[OnlineMusic] Valid songs with URL:', songs.length)
-
+      const videos = json.data?.results || []
       setSearched(true)
-      setResults(prev => append ? [...prev, ...songs] : songs)
-      setHasMore(raw.length >= 20)
+      setResults(prev => append ? [...prev, ...videos] : videos)
+      setHasMore(videos.length >= 18)
       setPage(pg)
-      setStatusMsg(`Found ${songs.length} songs via ${json.source || 'API'}`)
 
-      if (songs.length === 0 && raw.length > 0) {
-        setError(`API returned ${raw.length} results but none had playable URLs. Source: ${json.source}`)
-      }
+      if (videos.length === 0) setError('No results found. Try a different search.')
 
     } catch(e) {
       if (e.name === 'AbortError') return
-      console.error('[OnlineMusic] Search failed:', e)
       setSearched(true)
-      setError(e.message || 'Search failed')
+      setError(e.message)
     } finally {
       setLoading(false)
     }
   }, [])
 
-  const playOnline = (track) => {
-    if (!track.url) { notify('No playable URL for this song', 'warning'); return }
-    const existing = audioQueue.findIndex(q => q.id === track.id)
-    if (existing !== -1) { controls.playAudioAt(existing); return }
-    const newIdx = audioQueue.length
-    controls.addAudio([track])
-    setTimeout(() => controls.playAudioAt(newIdx), 80)
-    notify(`▶ ${track.displayName}`)
-  }
-
-  const addToLib = (track) => {
-    if (audioQueue.find(q => q.id === track.id)) { notify('Already in library', 'warning'); return }
-    controls.addAudio([track])
-    notify(`Added "${track.displayName}" ♪`)
+  const playVideo = (video) => {
+    setActiveId(video.youtubeId || video.id)
+    setPlayerVideo({ videoId: video.youtubeId || video.id, title: video.displayName })
   }
 
   const doSearch = (q) => { setQuery(q); search(q) }
 
   return (
-    <div style={{minHeight:'100%',background:'var(--navy)',display:'flex',flexDirection:'column'}}>
+    <div style={{ minHeight:'100%', background:'var(--navy)', display:'flex', flexDirection:'column' }}>
+
+      {/* YouTube player overlay */}
+      {playerVideo && (
+        <YouTubePlayer
+          videoId={playerVideo.videoId}
+          title={playerVideo.title}
+          onClose={() => setPlayerVideo(null)}
+        />
+      )}
+
       {/* Header */}
-      <div style={{padding:'14px 16px 10px',borderBottom:'1px solid var(--navy-border)',flexShrink:0}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
-          <div style={{width:38,height:38,borderRadius:10,background:'linear-gradient(135deg,#1d4ed8,var(--sky))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,boxShadow:'0 0 14px rgba(56,189,248,0.4)',flexShrink:0}}>🌐</div>
+      <div style={{ padding:'14px 16px 10px', borderBottom:'1px solid var(--navy-border)', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+          <div style={{ width:38, height:38, borderRadius:10, background:'linear-gradient(135deg,#cc0000,#ff4444)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, boxShadow:'0 0 14px rgba(239,68,68,0.5)', flexShrink:0 }}>▶</div>
           <div>
-            <div style={{fontSize:17,fontWeight:700,letterSpacing:2,color:'var(--sky)'}}>ONLINE MUSIC</div>
-            <div style={{fontSize:9,color:'var(--dimmed)',letterSpacing:1.5,marginTop:1}}>JIOSAAVN · FREE · NO LOGIN</div>
+            <div style={{ fontSize:17, fontWeight:700, letterSpacing:2, color:'#f87171' }}>YOUTUBE MUSIC</div>
+            <div style={{ fontSize:9, color:'var(--dimmed)', letterSpacing:1.5, marginTop:1 }}>FREE · NO LOGIN · UNLIMITED SONGS</div>
           </div>
         </div>
-        <div style={{display:'flex',gap:8}}>
-          <div style={{flex:1,position:'relative'}}>
-            <span style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',fontSize:15,color:'var(--dimmed)',pointerEvents:'none'}}>🔍</span>
+
+        {/* Search bar */}
+        <div style={{ display:'flex', gap:8 }}>
+          <div style={{ flex:1, position:'relative' }}>
+            <span style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', fontSize:15, color:'var(--dimmed)', pointerEvents:'none' }}>🔍</span>
             <input value={query} onChange={e=>setQuery(e.target.value)}
               onKeyDown={e=>e.key==='Enter'&&search(query)}
-              placeholder="Song name, artist, movie…"
-              style={{width:'100%',background:'var(--navy-light)',border:'1px solid var(--navy-border)',borderRadius:10,padding:'11px 12px 11px 36px',color:'var(--white)',fontSize:13,outline:'none',boxSizing:'border-box'}}
-              onFocus={e=>e.target.style.borderColor='var(--blue)'}
+              placeholder="Telugu songs, artist, movie…"
+              style={{ width:'100%', background:'var(--navy-light)', border:'1px solid var(--navy-border)', borderRadius:10, padding:'11px 12px 11px 36px', color:'var(--white)', fontSize:13, outline:'none', boxSizing:'border-box' }}
+              onFocus={e=>e.target.style.borderColor='#ef4444'}
               onBlur={e=>e.target.style.borderColor='var(--navy-border)'}/>
           </div>
           <button onClick={()=>search(query)} disabled={loading||!query.trim()}
-            style={{background:(!query.trim()||loading)?'var(--navy-light)':'linear-gradient(135deg,var(--blue),var(--sky))',border:'none',color:(!query.trim()||loading)?'var(--dimmed)':'var(--navy)',borderRadius:10,padding:'0 20px',fontSize:13,fontWeight:700,cursor:(!query.trim()||loading)?'not-allowed':'pointer',flexShrink:0}}>
+            style={{ background:(!query.trim()||loading)?'var(--navy-light)':'linear-gradient(135deg,#cc0000,#ff4444)', border:'none', color:(!query.trim()||loading)?'var(--dimmed)':'#fff', borderRadius:10, padding:'0 20px', fontSize:13, fontWeight:700, cursor:(!query.trim()||loading)?'not-allowed':'pointer', flexShrink:0 }}>
             {loading?'…':'GO'}
           </button>
         </div>
       </div>
 
-      <div style={{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
+      <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
 
         {/* Loading */}
         {loading && <Skeleton/>}
 
-        {/* Discover — shown before first search */}
-        {!loading && !searched && (
+        {/* Discover */}
+        {!loading && !searched && !error && (
           <>
-            <div style={{padding:'14px 16px 8px'}}>
-              <div style={{fontSize:10,color:'var(--muted)',letterSpacing:1.5,marginBottom:10,fontWeight:700}}>BROWSE BY MOOD</div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <div style={{ padding:'14px 16px 8px' }}>
+              <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:1.5, marginBottom:10, fontWeight:700 }}>BROWSE BY MOOD</div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                 {MOODS.map(m=>(
                   <button key={m.q} onClick={()=>doSearch(m.q)}
-                    style={{background:'var(--navy-light)',border:'1px solid var(--navy-border)',color:'var(--white)',borderRadius:20,padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                    style={{ background:'var(--navy-light)', border:'1px solid var(--navy-border)', color:'var(--white)', borderRadius:20, padding:'7px 14px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
                     {m.label}
                   </button>
                 ))}
               </div>
             </div>
-            <div style={{padding:'12px 16px 8px'}}>
-              <div style={{fontSize:10,color:'var(--muted)',letterSpacing:1.5,marginBottom:10,fontWeight:700}}>TOP ARTISTS</div>
-              <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+            <div style={{ padding:'12px 16px 8px' }}>
+              <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:1.5, marginBottom:10, fontWeight:700 }}>TOP ARTISTS</div>
+              <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
                 {ARTISTS.map(a=>(
                   <button key={a} onClick={()=>doSearch(a)}
-                    style={{background:'var(--navy-light)',border:'1px solid rgba(56,189,248,0.2)',color:'var(--sky)',borderRadius:8,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>
+                    style={{ background:'var(--navy-light)', border:'1px solid rgba(239,68,68,0.3)', color:'#f87171', borderRadius:8, padding:'6px 12px', fontSize:11, cursor:'pointer' }}>
                     {a}
                   </button>
                 ))}
               </div>
             </div>
-            <div style={{padding:'32px 16px',textAlign:'center'}}>
-              <div style={{fontSize:44,marginBottom:10,opacity:0.2}}>🎵</div>
-              <div style={{fontSize:13,color:'var(--muted)'}}>Search any Telugu song or artist</div>
-              <div style={{fontSize:11,color:'var(--dimmed)',marginTop:4}}>Streams from JioSaavn · Free · No login needed</div>
+            <div style={{ padding:'32px 16px', textAlign:'center' }}>
+              <div style={{ fontSize:44, marginBottom:10, opacity:0.2 }}>▶</div>
+              <div style={{ fontSize:13, color:'var(--muted)' }}>Search any Telugu song, artist or movie</div>
+              <div style={{ fontSize:11, color:'var(--dimmed)', marginTop:4 }}>Powered by YouTube · Free · No login needed</div>
             </div>
           </>
         )}
 
-        {/* No results after search */}
-        {!loading && searched && results.length===0 && !error && (
-          <div style={{padding:'32px 16px',textAlign:'center'}}>
-            <div style={{fontSize:44,marginBottom:10,opacity:0.3}}>🎵</div>
-            <div style={{fontSize:14,color:'var(--muted)',fontWeight:600,marginBottom:8}}>No results found</div>
-            <div style={{fontSize:12,color:'var(--dimmed)',marginBottom:16}}>{statusMsg}</div>
-            <button onClick={()=>doSearch(query)}
-              style={{background:'var(--blue-dim)',border:'1px solid var(--blue)',color:'var(--sky)',borderRadius:8,padding:'8px 20px',fontSize:12,cursor:'pointer',marginBottom:12}}>
-              🔄 Try Again
-            </button>
-            {debugInfo && (
-              <details style={{textAlign:'left',marginTop:8}}>
-                <summary style={{fontSize:10,color:'var(--dimmed)',cursor:'pointer',padding:'4px 0'}}>▶ Debug info</summary>
-                <pre style={{fontSize:9,color:'#64748b',background:'rgba(0,0,0,0.3)',borderRadius:6,padding:8,marginTop:6,overflow:'auto',maxHeight:150,whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
-                  {JSON.stringify(debugInfo,null,2)}
+        {/* Error */}
+        {!loading && error && (
+          <div style={{ margin:'16px', padding:'16px', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:12 }}>
+            <div style={{ fontSize:24, textAlign:'center', marginBottom:8 }}>⚠️</div>
+            <div style={{ fontSize:12, color:'#fca5a5', marginBottom:12, lineHeight:1.6, textAlign:'center' }}>{error}</div>
+            <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap', marginBottom:12 }}>
+              <button onClick={()=>search(query)}
+                style={{ background:'rgba(239,68,68,0.2)', border:'1px solid #ef4444', color:'#f87171', borderRadius:8, padding:'7px 16px', fontSize:12, cursor:'pointer' }}>
+                🔄 Retry
+              </button>
+              <button onClick={()=>doSearch('Devi Sri Prasad Telugu songs')}
+                style={{ background:'transparent', border:'1px solid var(--navy-border)', color:'var(--muted)', borderRadius:8, padding:'7px 14px', fontSize:12, cursor:'pointer' }}>
+                Try Popular Search
+              </button>
+            </div>
+            {debugLog.length > 0 && (
+              <details>
+                <summary style={{ fontSize:10, color:'var(--dimmed)', cursor:'pointer', marginBottom:6 }}>▶ Debug info</summary>
+                <pre style={{ fontSize:9, color:'#64748b', background:'rgba(0,0,0,0.3)', borderRadius:6, padding:8, overflow:'auto', maxHeight:180, whiteSpace:'pre-wrap', wordBreak:'break-all' }}>
+                  {debugLog.join('\n')}
                 </pre>
               </details>
             )}
           </div>
         )}
 
-        {/* Error */}
-        {!loading && error && (
-          <div style={{margin:'16px',padding:'16px',background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:12}}>
-            <div style={{fontSize:24,textAlign:'center',marginBottom:8}}>⚠️</div>
-            <div style={{fontSize:12,color:'#fca5a5',marginBottom:12,lineHeight:1.6,textAlign:'center'}}>{error}</div>
-            <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap',marginBottom:12}}>
-              <button onClick={()=>search(query)}
-                style={{background:'var(--blue-dim)',border:'1px solid var(--blue)',color:'var(--sky)',borderRadius:8,padding:'7px 16px',fontSize:12,cursor:'pointer'}}>
-                🔄 Retry
-              </button>
-              <button onClick={()=>doSearch('Anirudh Ravichander')}
-                style={{background:'transparent',border:'1px solid var(--navy-border)',color:'var(--muted)',borderRadius:8,padding:'7px 14px',fontSize:12,cursor:'pointer'}}>
-                Try Different
-              </button>
-            </div>
-            {debugInfo && (
-              <details>
-                <summary style={{fontSize:10,color:'var(--dimmed)',cursor:'pointer',marginBottom:6}}>▶ Debug info (share this screenshot)</summary>
-                <pre style={{fontSize:9,color:'#64748b',background:'rgba(0,0,0,0.3)',borderRadius:6,padding:8,overflow:'auto',maxHeight:200,whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
-{`HTTP: ${debugInfo.httpStatus}
-Source: ${debugInfo.source || 'unknown'}
-${debugInfo.log ? 'Log:\n' + debugInfo.log.join('\n') : ''}
-${debugInfo.rawResponse ? 'Raw:\n' + debugInfo.rawResponse.slice(0,300) : ''}`}
-                </pre>
-              </details>
-            )}
+        {/* No results */}
+        {!loading && searched && results.length===0 && !error && (
+          <div style={{ padding:'40px 16px', textAlign:'center' }}>
+            <div style={{ fontSize:44, opacity:0.2, marginBottom:10 }}>🔍</div>
+            <div style={{ fontSize:14, color:'var(--muted)', fontWeight:600, marginBottom:8 }}>No results found</div>
+            <div style={{ fontSize:12, color:'var(--dimmed)', marginBottom:16 }}>Try a different search term</div>
+            <button onClick={()=>doSearch('Devi Sri Prasad Telugu songs')}
+              style={{ background:'rgba(239,68,68,0.2)', border:'1px solid #ef4444', color:'#f87171', borderRadius:8, padding:'8px 20px', fontSize:12, cursor:'pointer' }}>
+              Try Popular Search
+            </button>
           </div>
         )}
 
         {/* Results */}
         {results.length > 0 && (
           <>
-            <div style={{padding:'8px 16px 4px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span style={{fontSize:10,color:'var(--dimmed)',letterSpacing:0.5}}>{results.length} SONGS · {statusMsg}</span>
-              <button onClick={()=>{
-                const newSongs=results.filter(s=>!audioQueue.find(q=>q.id===s.id))
-                if(!newSongs.length){notify('All already in library','warning');return}
-                controls.addAudio(newSongs); notify(`Added all ${newSongs.length} songs ♪`)
-              }} style={{fontSize:10,color:'var(--sky)',background:'none',border:'none',cursor:'pointer'}}>+ ADD ALL</button>
+            <div style={{ padding:'8px 16px 4px', fontSize:10, color:'var(--dimmed)', letterSpacing:0.5 }}>
+              {results.length} YOUTUBE VIDEOS · Tap to watch & listen
             </div>
-            {results.map(song=>(
-              <SongCard key={song.id} song={song}
-                isActive={audioQueue[audioIndex]?.id===song.id} isPlaying={audioPlaying}
-                onPlay={()=>playOnline(song)} onAdd={()=>addToLib(song)}/>
+            {results.map(video=>(
+              <VideoCard key={video.id||video.youtubeId} video={video}
+                isActive={activeId === (video.youtubeId||video.id)}
+                onPlay={()=>playVideo(video)}/>
             ))}
-            {hasMore&&(
-              <div style={{padding:'16px',textAlign:'center'}}>
-                <button onClick={()=>search(query,page+1,true)} disabled={loading}
-                  style={{background:'var(--blue-dim)',border:'1px solid var(--blue)',color:'var(--sky)',borderRadius:10,padding:'11px 32px',fontSize:12,fontWeight:600,opacity:loading?0.5:1,cursor:'pointer'}}>
+            {hasMore && (
+              <div style={{ padding:'16px', textAlign:'center' }}>
+                <button onClick={()=>search(query, page+1, true)} disabled={loading}
+                  style={{ background:'rgba(239,68,68,0.2)', border:'1px solid #ef4444', color:'#f87171', borderRadius:10, padding:'11px 32px', fontSize:12, fontWeight:600, opacity:loading?0.5:1, cursor:'pointer' }}>
                   {loading?'⏳ Loading…':'LOAD MORE'}
                 </button>
               </div>
@@ -345,7 +347,7 @@ ${debugInfo.rawResponse ? 'Raw:\n' + debugInfo.rawResponse.slice(0,300) : ''}`}
           </>
         )}
 
-        <div style={{height:80}}/>
+        <div style={{ height:80 }}/>
       </div>
     </div>
   )
